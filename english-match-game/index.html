@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英文單字配對遊戲</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh; display: flex; justify-content: center; align-items: center;
+}
+.container {
+  background: white; border-radius: 20px; padding: 30px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 600px; width: 95%;
+  text-align: center;
+}
+h1 { color: #4a148c; margin-bottom: 5px; font-size: 1.8em; }
+.subtitle { color: #888; margin-bottom: 20px; font-size: 0.9em; }
+
+/* 登入區 */
+.login-box { max-width: 350px; margin: 0 auto; }
+.login-box label { display: block; text-align: left; margin: 10px 0 5px; color: #555; font-weight: bold; }
+.login-box input {
+  width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 10px;
+  font-size: 1em; outline: none; transition: border 0.3s;
+}
+.login-box input:focus { border-color: #667eea; }
+.btn {
+  background: linear-gradient(135deg, #667eea, #764ba2); color: white;
+  border: none; padding: 12px 30px; border-radius: 25px; font-size: 1.1em;
+  cursor: pointer; margin-top: 20px; transition: transform 0.2s, box-shadow 0.2s;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102,126,234,0.4); }
+.btn:active { transform: translateY(0); }
+
+/* 遊戲區 */
+.game-header {
+  display: flex; justify-content: space-around; align-items: center;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+}
+.stat {
+  background: #f3e5f5; padding: 10px 20px; border-radius: 15px; text-align: center;
+}
+.stat-value { font-size: 1.5em; font-weight: bold; color: #4a148c; }
+.stat-label { font-size: 0.8em; color: #888; }
+.grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  max-width: 450px; margin: 0 auto;
+}
+.card {
+  aspect-ratio: 1; background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 12px; cursor: pointer; display: flex;
+  justify-content: center; align-items: center; font-size: 1.3em;
+  font-weight: bold; color: white; transition: transform 0.4s, background 0.3s;
+  user-select: none; position: relative;
+}
+.card:hover { transform: scale(1.05); }
+.card.flipped { background: white; color: #333; border: 3px solid #667eea; }
+.card.matched { background: #c8e6c9; color: #2e7d32; border: 3px solid #4caf50; cursor: default; }
+.card.matched:hover { transform: none; }
+
+/* 結果區 */
+.result-box { margin-top: 20px; }
+.result-box h2 { color: #4a148c; margin-bottom: 15px; }
+.result-stats { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+.message { padding: 10px; border-radius: 10px; margin: 10px 0; font-weight: bold; }
+.message.success { background: #c8e6c9; color: #2e7d32; }
+.message.error { background: #ffcdd2; color: #c62828; }
+.message.info { background: #e3f2fd; color: #1565c0; }
+
+.hidden { display: none !important; }
+
+@media (max-width: 480px) {
+  .container { padding: 20px; }
+  .grid { gap: 6px; }
+  .card { font-size: 1em; }
+  h1 { font-size: 1.3em; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 登入畫面 -->
+  <div id="loginScreen">
+    <h1>🔤 英文單字配對遊戲</h1>
+    <p class="subtitle">翻牌找出英文與中文的配對</p>
+    <div class="login-box">
+      <label for="classNum">班級</label>
+      <input type="text" id="classNum" placeholder="例如：301" maxlength="10">
+      <label for="seatNum">座號</label>
+      <input type="text" id="seatNum" placeholder="例如：15" maxlength="10">
+      <button class="btn" onclick="startGame()">開始遊戲</button>
+    </div>
+  </div>
+
+  <!-- 遊戲畫面 -->
+  <div id="gameScreen" class="hidden">
+    <h1>🔤 英文單字配對遊戲</h1>
+    <div class="game-header">
+      <div class="stat">
+        <div class="stat-value" id="timer">00:00</div>
+        <div class="stat-label">花費時間</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="scoreDisplay">0</div>
+        <div class="stat-label">分數</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="pairsLeft">8</div>
+        <div class="stat-label">剩餘配對</div>
+      </div>
+    </div>
+    <div class="grid" id="gameGrid"></div>
+    <div id="gameMessage"></div>
+  </div>
+
+  <!-- 結果畫面 -->
+  <div id="resultScreen" class="hidden">
+    <h1>🎉 遊戲結束！</h1>
+    <p class="subtitle" id="playerInfo"></p>
+    <div class="result-stats">
+      <div class="stat">
+        <div class="stat-value" id="finalScore"></div>
+        <div class="stat-label">總分</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="finalTime"></div>
+        <div class="stat-label">花費時間</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="finalAccuracy"></div>
+        <div class="stat-label">正確率</div>
+      </div>
+    </div>
+    <div id="saveMessage"></div>
+    <button class="btn" onclick="location.reload()">再玩一次</button>
+  </div>
+
+</div>
+
+<script>
+// Supabase 設定
+const SUPABASE_URL = 'https://jjiuptgdwdpnhnzujzcl.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqaXVwdGd0ZHdkcG5obnVqemNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMjA4OTQsImV4cCI6MjEwMDc5Njg5NH0.XHWUe0ES51chdS2M2BCOHMFLmJ76D-maJJjLj3P-oFM';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// 單字配對資料
+const wordPairs = [
+  { en: 'Apple', zh: '蘋果' },
+  { en: 'Book', zh: '書本' },
+  { en: 'Cat', zh: '貓咪' },
+  { en: 'Dog', zh: '小狗' },
+  { en: 'Egg', zh: '雞蛋' },
+  { en: 'Fish', zh: '魚' },
+  { en: 'Girl', zh: '女孩' },
+  { en: 'House', zh: '房子' }
+];
+
+let cards = [];
+let flippedCards = [];
+let matchedCount = 0;
+let score = 0;
+let totalAttempts = 0;
+let correctAttempts = 0;
+let timerSeconds = 0;
+let timerInterval = null;
+let gameStarted = false;
+let classNum = '';
+let seatNum = '';
+
+// 隨機打亂陣列
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// 開始遊戲
+function startGame() {
+  classNum = document.getElementById('classNum').value.trim();
+  seatNum = document.getElementById('seatNum').value.trim();
+
+  if (!classNum || !seatNum) {
+    alert('請輸入班級和座號！');
+    return;
+  }
+
+  // 建立牌組：8 張英文 + 8 張中文，共 16 張
+  cards = [];
+  wordPairs.forEach((pair, idx) => {
+    cards.push({ id: idx, text: pair.en, type: 'en', pairId: idx });
+    cards.push({ id: idx, text: pair.zh, type: 'zh', pairId: idx });
+  });
+  cards = shuffle(cards);
+
+  // 切換畫面
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('hidden');
+  document.getElementById('resultScreen').classList.add('hidden');
+  document.getElementById('gameMessage').innerHTML = '';
+
+  // 重置狀態
+  flippedCards = [];
+  matchedCount = 0;
+  score = 0;
+  totalAttempts = 0;
+  correctAttempts = 0;
+  timerSeconds = 0;
+  gameStarted = false;
+  if (timerInterval) clearInterval(timerInterval);
+
+  document.getElementById('scoreDisplay').textContent = '0';
+  document.getElementById('pairsLeft').textContent = '8';
+  document.getElementById('timer').textContent = '00:00';
+
+  // 繪製牌面
+  renderCards();
+}
+
+// 繪製牌面
+function renderCards() {
+  const grid = document.getElementById('gameGrid');
+  grid.innerHTML = '';
+  cards.forEach((card, index) => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.textContent = '?';
+    div.dataset.index = index;
+    div.addEventListener('click', () => flipCard(index, div));
+    grid.appendChild(div);
+  });
+}
+
+// 翻牌
+function flipCard(index, el) {
+  if (!gameStarted) {
+    gameStarted = true;
+    startTimer();
+  }
+
+  // 已經翻開或已配對的不能點
+  if (el.classList.contains('flipped') || el.classList.contains('matched')) return;
+  // 已經有兩張翻開在比對中
+  if (flippedCards.length >= 2) return;
+
+  // 翻開
+  el.textContent = cards[index].text;
+  el.classList.add('flipped');
+  flippedCards.push({ index, el, card: cards[index] });
+
+  // 翻兩張後比對
+  if (flippedCards.length === 2) {
+    totalAttempts++;
+    const [first, second] = flippedCards;
+
+    if (first.card.pairId === second.card.pairId && first.card.type !== second.card.type) {
+      // 配對成功
+      correctAttempts++;
+      score += 10;
+      matchedCount++;
+      first.el.classList.add('matched');
+      second.el.classList.add('matched');
+      flippedCards = [];
+
+      document.getElementById('scoreDisplay').textContent = score;
+      document.getElementById('pairsLeft').textContent = 8 - matchedCount;
+
+      // 全部配對完成
+      if (matchedCount === 8) {
+        clearInterval(timerInterval);
+        setTimeout(showResult, 500);
+      }
+    } else {
+      // 配對失敗
+      score = Math.max(0, score - 2);
+      document.getElementById('scoreDisplay').textContent = score;
+
+      setTimeout(() => {
+        first.el.textContent = '?';
+        first.el.classList.remove('flipped');
+        second.el.textContent = '?';
+        second.el.classList.remove('flipped');
+        flippedCards = [];
+      }, 800);
+    }
+  }
+}
+
+// 計時器
+function startTimer() {
+  timerInterval = setInterval(() => {
+    timerSeconds++;
+    const min = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+    const sec = String(timerSeconds % 60).padStart(2, '0');
+    document.getElementById('timer').textContent = `${min}:${sec}`;
+  }, 1000);
+}
+
+// 顯示結果並儲存
+async function showResult() {
+  document.getElementById('gameScreen').classList.add('hidden');
+  document.getElementById('resultScreen').classList.remove('hidden');
+
+  document.getElementById('playerInfo').textContent = `班級 ${classNum}　座號 ${seatNum}`;
+  document.getElementById('finalScore').textContent = score;
+  document.getElementById('finalTime').textContent = formatTime(timerSeconds);
+
+  const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
+  document.getElementById('finalAccuracy').textContent = accuracy + '%';
+
+  // 儲存到 Supabase
+  const msgEl = document.getElementById('saveMessage');
+  msgEl.innerHTML = '<div class="message info">正在儲存成績...</div>';
+
+  const { error } = await supabase
+    .from('game_scores')
+    .insert([{
+      seat_number: seatNum,
+      class_number: classNum,
+      score: score,
+      game_time: timerSeconds
+    }]);
+
+  if (error) {
+    msgEl.innerHTML = `<div class="message error">儲存失敗：${error.message}</div>`;
+  } else {
+    msgEl.innerHTML = '<div class="message success">✅ 成績已儲存成功！</div>';
+  }
+}
+
+function formatTime(sec) {
+  const m = String(Math.floor(sec / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+</script>
+</body>
+</html>

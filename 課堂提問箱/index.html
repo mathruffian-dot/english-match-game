@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>英文單字配對遊戲</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Microsoft JhengHei', 'PingFang TC', sans-serif;
+  background: linear-gradient(135deg, #1a5276 0%, #2e86c1 50%, #2980b9 100%);
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px;
+}
+.container {
+  background: white; border-radius: 16px; padding: 20px 16px;
+  max-width: 520px; width: 100%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+/* 登入畫面 */
+.login { text-align: center; }
+.login h1 { color: #1a5276; font-size: 1.5em; margin-bottom: 4px; }
+.login .sub { color: #888; font-size: 0.9em; margin-bottom: 20px; }
+.login label { display: block; font-weight: bold; color: #555; margin-bottom: 4px; font-size: 0.9em; text-align: left; }
+.login input {
+  width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px;
+  font-size: 1em; margin-bottom: 12px; font-family: inherit;
+}
+.login input:focus { outline: none; border-color: #2e86c1; }
+.btn {
+  width: 100%; padding: 14px; border: none; border-radius: 10px;
+  font-size: 1.1em; font-weight: bold; cursor: pointer; color: white;
+  background: linear-gradient(135deg, #2e86c1 0%, #1a5276 100%);
+  transition: transform 0.2s;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+
+/* 遊戲畫面 */
+.game { display: none; }
+.game-header {
+  display: flex; justify-content: space-between; align-items: center;
+  background: #1a5276; color: white; border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 14px; font-size: 0.95em;
+}
+.timer { font-weight: bold; font-size: 1.1em; }
+.progress { font-weight: bold; }
+.section-label {
+  font-weight: bold; color: #888; font-size: 0.85em;
+  margin-bottom: 8px; text-align: center; text-transform: uppercase; letter-spacing: 1px;
+}
+.card-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+  margin-bottom: 16px;
+}
+.card {
+  aspect-ratio: 1; border-radius: 10px; border: 2px solid #e0e0e0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: clamp(0.7em, 2vw, 0.95em); font-weight: bold;
+  cursor: pointer; transition: all 0.2s; text-align: center;
+  padding: 2px; word-break: break-word; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.card.en { background: #d6eaf8; color: #1a5276; border-color: #aed6f1; }
+.card.zh { background: #fdebd0; color: #a04000; border-color: #f5cba7; }
+.card:hover { transform: scale(1.05); }
+.card.selected { border-width: 3px; border-color: #8e44ad; transform: scale(1.08); box-shadow: 0 0 12px rgba(142,68,173,0.4); }
+.card.matched { background: #d5f5e3; color: #1e8449; border-color: #82e0aa; cursor: default; opacity: 0.7; transform: none; }
+.card.wrong { animation: shake 0.4s; border-color: #e74c3c; background: #fadbd8; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+/* 結果畫面 */
+.result { display: none; text-align: center; }
+.result h2 { color: #1a5276; margin-bottom: 4px; }
+.result .score-big { font-size: 3em; font-weight: bold; color: #2e86c1; margin: 10px 0; }
+.result .detail { color: #666; font-size: 0.95em; line-height: 1.8; margin-bottom: 16px; }
+.result .detail span { font-weight: bold; color: #333; }
+
+.msg { display: none; text-align: center; padding: 10px; border-radius: 8px; margin-top: 10px; font-size: 0.9em; }
+.msg.ok { display: block; background: #d5f5e3; color: #1e8449; }
+.msg.err { display: block; background: #fadbd8; color: #c0392b; }
+
+/* 老師查看 */
+.view-link { text-align: center; margin-top: 14px; }
+.view-link a { color: #2e86c1; font-size: 0.85em; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 登入 -->
+  <div class="login" id="login">
+    <h1>英文單字配對遊戲</h1>
+    <p class="sub">A1 常見單字挑戰</p>
+    <label>班級</label>
+    <input type="text" id="classInput" placeholder="例如：701" maxlength="10">
+    <label>座號</label>
+    <input type="number" id="seatInput" placeholder="例如：23" min="1" max="99">
+    <button class="btn" onclick="startGame()">開始遊戲</button>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <!-- 遊戲 -->
+  <div class="game" id="game">
+    <div class="game-header">
+      <span>班級 <b id="dispClass"></b>．座號 <b id="dispSeat"></b></span>
+      <span class="timer" id="timer">00:00</span>
+      <span class="progress" id="progress">0 / 10</span>
+    </div>
+    <div class="section-label">英文</div>
+    <div class="card-grid" id="enGrid"></div>
+    <div class="section-label">中文</div>
+    <div class="card-grid" id="zhGrid"></div>
+    <div class="msg" id="gameMsg"></div>
+  </div>
+
+  <!-- 結果 -->
+  <div class="result" id="result">
+    <h2>遊戲完成！</h2>
+    <div class="score-big" id="scoreDisplay">100</div>
+    <div class="detail">
+      正確：<span id="resCorrect">10</span> / 10<br>
+      錯誤次數：<span id="resWrong">0</span> 次<br>
+      花費時間：<span id="resTime">00:00</span>
+    </div>
+    <button class="btn" id="submitBtn" onclick="submitResult()">送出成績</button>
+    <div class="msg" id="resultMsg"></div>
+  </div>
+
+  <div class="view-link">
+    <a href="#" id="sheetLink" target="_blank">查看試算表紀錄</a>
+  </div>
+</div>
+
+<script>
+var words = [];
+var selectedEn = null;
+var selectedZh = null;
+var matchedCount = 0;
+var wrongCount = 0;
+var totalScore = 0;
+var timerSec = 0;
+var timerInterval = null;
+var className = '';
+var seat = '';
+var gameStarted = false;
+var pairScores = {}; // {pairId: remaining points}
+
+function showMsg(elId, text, type) {
+  var el = document.getElementById(elId);
+  el.textContent = text;
+  el.className = 'msg ' + type;
+}
+
+function startGame() {
+  className = document.getElementById('classInput').value.trim();
+  seat = document.getElementById('seatInput').value.trim();
+
+  if (!className) { showMsg('loginMsg', '請輸入班級', 'err'); return; }
+  if (!seat) { showMsg('loginMsg', '請輸入座號', 'err'); return; }
+
+  document.getElementById('loginMsg').className = 'msg';
+  document.getElementById('login').style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(data) {
+      words = data;
+      pairScores = {};
+      for (var i = 0; i < words.length; i++) {
+        pairScores[words[i].id] = 10;
+      }
+      buildGame();
+    })
+    .withFailureHandler(function() {
+      showMsg('loginMsg', '載入失敗，請重整頁面再試', 'err');
+      document.getElementById('login').style.display = 'block';
+    })
+    .getWords();
+}
+
+function shuffle(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+function buildGame() {
+  matchedCount = 0;
+  wrongCount = 0;
+  totalScore = 0;
+  timerSec = 0;
+  selectedEn = null;
+  selectedZh = null;
+  gameStarted = false;
+
+  document.getElementById('dispClass').textContent = className;
+  document.getElementById('dispSeat').textContent = seat;
+  document.getElementById('timer').textContent = '00:00';
+  document.getElementById('progress').textContent = '0 / 10';
+  document.getElementById('gameMsg').className = 'msg';
+
+  var enItems = words.map(function(w) { return { id: w.id, text: w.en, type: 'en' }; });
+  var zhItems = words.map(function(w) { return { id: w.id, text: w.zh, type: 'zh' }; });
+  enItems = shuffle(enItems);
+  zhItems = shuffle(zhItems);
+
+  renderCards('enGrid', enItems, 'en');
+  renderCards('zhGrid', zhItems, 'zh');
+
+  document.getElementById('game').style.display = 'block';
+  document.getElementById('result').style.display = 'none';
+}
+
+function renderCards(gridId, items, type) {
+  var grid = document.getElementById(gridId);
+  grid.innerHTML = '';
+  for (var i = 0; i < items.length; i++) {
+    var card = document.createElement('div');
+    card.className = 'card ' + type;
+    card.textContent = items[i].text;
+    card.dataset.id = items[i].id;
+    card.dataset.type = type;
+    card.onclick = function() { cardClick(this); };
+    grid.appendChild(card);
+  }
+}
+
+function cardClick(card) {
+  if (!gameStarted) {
+    gameStarted = true;
+    startTimer();
+  }
+
+  if (card.classList.contains('matched')) return;
+
+  var type = card.dataset.type;
+  var id = parseInt(card.dataset.id);
+
+  if (type === 'en') {
+    if (selectedEn) selectedEn.classList.remove('selected');
+    selectedEn = card;
+    card.classList.add('selected');
+  } else {
+    if (selectedZh) selectedZh.classList.remove('selected');
+    selectedZh = card;
+    card.classList.add('selected');
+  }
+
+  if (selectedEn && selectedZh) {
+    checkMatch();
+  }
+}
+
+function checkMatch() {
+  var enId = parseInt(selectedEn.dataset.id);
+  var zhId = parseInt(selectedZh.dataset.id);
+
+  if (enId === zhId) {
+    // 正確
+    var points = pairScores[enId];
+    totalScore += points;
+    matchedCount++;
+    selectedEn.classList.add('matched');
+    selectedEn.classList.remove('selected');
+    selectedZh.classList.add('matched');
+    selectedZh.classList.remove('selected');
+    selectedEn = null;
+    selectedZh = null;
+    document.getElementById('progress').textContent = matchedCount + ' / 10';
+
+    if (matchedCount === 10) {
+      clearInterval(timerInterval);
+      showResult();
+    }
+  } else {
+    // 錯誤
+    wrongCount++;
+    var enPid = parseInt(selectedEn.dataset.id);
+    var zhPid = parseInt(selectedZh.dataset.id);
+    // 為兩個配對都扣分
+    if (pairScores[enPid] > 0) pairScores[enPid] = Math.max(0, pairScores[enPid] - 2);
+    if (pairScores[zhPid] > 0) pairScores[zhPid] = Math.max(0, pairScores[zhPid] - 2);
+
+    selectedEn.classList.add('wrong');
+    selectedZh.classList.add('wrong');
+    var en = selectedEn, zh = selectedZh;
+    setTimeout(function() {
+      en.classList.remove('selected', 'wrong');
+      zh.classList.remove('selected', 'wrong');
+    }, 400);
+    selectedEn = null;
+    selectedZh = null;
+  }
+}
+
+function startTimer() {
+  timerInterval = setInterval(function() {
+    timerSec++;
+    var m = Math.floor(timerSec / 60);
+    var s = timerSec % 60;
+    document.getElementById('timer').textContent =
+      (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }, 1000);
+}
+
+function showResult() {
+  document.getElementById('game').style.display = 'none';
+  document.getElementById('result').style.display = 'block';
+  document.getElementById('scoreDisplay').textContent = totalScore;
+  document.getElementById('resCorrect').textContent = matchedCount;
+  document.getElementById('resWrong').textContent = wrongCount;
+  var m = Math.floor(timerSec / 60);
+  var s = timerSec % 60;
+  document.getElementById('resTime').textContent =
+    (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function submitResult() {
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '送出中...';
+
+  google.script.run
+    .withSuccessHandler(function() {
+      btn.textContent = '已送出';
+      showMsg('resultMsg', '成績已記錄！', 'ok');
+    })
+    .withFailureHandler(function() {
+      btn.disabled = false;
+      btn.textContent = '送出成績';
+      showMsg('resultMsg', '送出失敗，請再試一次', 'err');
+    })
+    .recordResult(className, seat, totalScore, matchedCount, wrongCount, timerSec);
+}
+
+// 顯示試算表連結
+(function() {
+  google.script.run
+    .withSuccessHandler(function(url) { if (url) document.getElementById('sheetLink').href = url; })
+    .getSheetUrl();
+})();
+</script>
+</body>
+</html>
