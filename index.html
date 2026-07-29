@@ -71,6 +71,26 @@ h1 { color: #4a148c; margin-bottom: 5px; font-size: 1.8em; }
 .message.error { background: #ffcdd2; color: #c62828; }
 .message.info { background: #e3f2fd; color: #1565c0; }
 
+/* AI 分析區 */
+.ai-box {
+  background: linear-gradient(135deg, #e8eaf6, #f3e5f5);
+  border-radius: 15px; padding: 20px; margin: 15px 0;
+  text-align: left; line-height: 1.8; color: #333;
+}
+.ai-box h3 { color: #4a148c; text-align: center; margin-bottom: 10px; }
+.ai-box .weakness { color: #e65100; font-weight: bold; }
+.ai-box .suggestion { color: #2e7d32; }
+.ai-box .encourage { color: #6a1b9a; font-style: italic; margin-top: 10px; display: block; }
+.ai-box .loading-dots { text-align: center; color: #999; }
+.ai-box .loading-dots::after {
+  content: ''; animation: dots 1.5s infinite;
+}
+@keyframes dots {
+  0% { content: '.'; }
+  33% { content: '..'; }
+  66% { content: '...'; }
+}
+
 .hidden { display: none !important; }
 
 @media (max-width: 480px) {
@@ -137,6 +157,12 @@ h1 { color: #4a148c; margin-bottom: 5px; font-size: 1.8em; }
       </div>
     </div>
     <div id="saveMessage"></div>
+    <div id="aiAnalysis" class="hidden">
+      <div class="ai-box">
+        <h3>🤖 AI 錯題分析</h3>
+        <div id="aiContent"><span class="loading-dots">AI 分析中</span></div>
+      </div>
+    </div>
     <button class="btn" onclick="location.reload()">再玩一次</button>
   </div>
 
@@ -171,6 +197,7 @@ let timerInterval = null;
 let gameStarted = false;
 let classNum = '';
 let seatNum = '';
+let wrongWords = [];
 
 // 隨機打亂陣列
 function shuffle(arr) {
@@ -214,6 +241,7 @@ function startGame() {
   correctAttempts = 0;
   timerSeconds = 0;
   gameStarted = false;
+  wrongWords = [];
   if (timerInterval) clearInterval(timerInterval);
 
   document.getElementById('scoreDisplay').textContent = '0';
@@ -278,7 +306,12 @@ function flipCard(index, el) {
         setTimeout(showResult, 500);
       }
     } else {
-      // 配對失敗
+      // 配對失敗 — 記錄參與錯配的英文單字
+      [first, second].forEach(f => {
+        if (f.card.type === 'en' && !wrongWords.includes(f.card.text)) {
+          wrongWords.push(f.card.text);
+        }
+      });
       score = Math.max(0, score - 2);
       document.getElementById('scoreDisplay').textContent = score;
 
@@ -332,6 +365,64 @@ async function showResult() {
     msgEl.innerHTML = `<div class="message error">儲存失敗：${error.message}</div>`;
   } else {
     msgEl.innerHTML = '<div class="message success">✅ 成績已儲存成功！</div>';
+  }
+
+  // AI 錯題分析
+  if (wrongWords.length > 0) {
+    document.getElementById('aiAnalysis').classList.remove('hidden');
+    analyzeMistakes(wrongWords, accuracy, score);
+  } else {
+    document.getElementById('aiAnalysis').classList.remove('hidden');
+    document.getElementById('aiContent').innerHTML =
+      '<span class="encourage">🎯 全對！你太厲害了，所有單字都記得很熟！</span>';
+  }
+}
+
+// Groq AI 分析錯題（透過 Supabase Edge Function 代理）
+async function analyzeMistakes(words, accuracy, finalScore) {
+  const wordList = words.join('、');
+
+  const systemMsg = `你是英文老師，專門分析學生在英文單字配對遊戲的表現。
+用繁體中文回答，語氣友善、適合國中小學生閱讀。
+回答分成三段，每段用 <weakness>、<suggestion>、<encourage> 標籤標記：
+<weakness>一句點出弱點（為什麼這些單字會搞混？）</weakness>
+<suggestion>兩條具體複習建議</suggestion>
+<encourage>一句溫暖鼓勵</encourage>`;
+
+  const userMsg = `學生答錯的英文單字：${wordList}。正確率 ${accuracy}%，總分 ${finalScore} 分。
+注意：學生可能是把這些英文單字跟別的中文對應錯了，請幫忙分析。`;
+
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/analyze-mistakes`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ systemMsg, userMsg })
+      }
+    );
+
+    const data = await response.json();
+    const text = data.content || '';
+
+    const weakMatch = text.match(/<weakness>([\s\S]*?)<\/weakness>/);
+    const sugMatch = text.match(/<suggestion>([\s\S]*?)<\/suggestion>/);
+    const encMatch = text.match(/<encourage>([\s\S]*?)<\/encourage>/);
+
+    let html = '';
+    if (weakMatch) html += `<p class="weakness">📌 ${weakMatch[1].trim()}</p>`;
+    if (sugMatch) html += `<p class="suggestion">💡 ${sugMatch[1].trim().replace(/\n/g, '<br>')}</p>`;
+    if (encMatch) html += `<span class="encourage">🌟 ${encMatch[1].trim()}</span>`;
+
+    if (!html) html = `<p>${text}</p>`;
+    document.getElementById('aiContent').innerHTML = html;
+
+  } catch (e) {
+    document.getElementById('aiContent').innerHTML =
+      `<span class="encourage">AI 分析暫時無法使用，請再試一次～<br>你答錯的單字：${wordList}</span>`;
   }
 }
 
