@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>英文單字配對遊戲</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -169,11 +168,9 @@ h1 { color: #4a148c; margin-bottom: 5px; font-size: 1.8em; }
 </div>
 
 <script>
-// Supabase 設定（僅用於儲存成績，載入失敗不影響遊戲）
+// Supabase REST API 直接呼叫（不需要 CDN）
 const SUPABASE_URL = 'https://jjiuptgdwdpnhnzujzcl.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqaXVwdGd0ZHdkcG5obnVqemNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMjA4OTQsImV4cCI6MjEwMDc5Njg5NH0.XHWUe0ES51chdS2M2BCOHMFLmJ76D-maJJjLj3P-oFM';
-let sb = null;
-try { sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e) {}
 
 // 單字配對資料
 const wordPairs = [
@@ -349,26 +346,32 @@ async function showResult() {
   const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
   document.getElementById('finalAccuracy').textContent = accuracy + '%';
 
-  // 儲存到 Supabase（若 CDN 未載入則跳過）
+  // 儲存到 Supabase（直接用 REST API）
   const msgEl = document.getElementById('saveMessage');
-  if (sb) {
-    msgEl.innerHTML = '<div class="message info">正在儲存成績...</div>';
-    const { error } = await sb
-      .from('game_scores')
-      .insert([{
+  msgEl.innerHTML = '<div class="message info">正在儲存成績...</div>';
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/game_scores`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
         seat_number: seatNum,
         class_number: classNum,
         score: score,
         game_time: timerSeconds
-      }]);
-
-    if (error) {
-      msgEl.innerHTML = `<div class="message error">儲存失敗：${error.message}</div>`;
-    } else {
+      })
+    });
+    if (resp.ok) {
       msgEl.innerHTML = '<div class="message success">✅ 成績已儲存成功！</div>';
+    } else {
+      msgEl.innerHTML = `<div class="message error">儲存失敗：${resp.status}</div>`;
     }
-  } else {
-    msgEl.innerHTML = '<div class="message info">📝 成績僅顯示於畫面（資料庫未連線）</div>';
+  } catch(e) {
+    msgEl.innerHTML = '<div class="message error">網路連線失敗，成績未儲存</div>';
   }
 
   // AI 錯題分析
